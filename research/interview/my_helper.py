@@ -70,7 +70,7 @@ class MyHelper:
     def get_validate_answer(self, qna_tuple):
         answer, question_options = qna_tuple
         if answer not in question_options:
-            raise ValidationError(f"Choose option from {question_options}",
+            raise ValidationError(f"You have chosen unavailable option - {answer}, please choose from {question_options}",
                                   code=status.HTTP_400_BAD_REQUEST)
         return answer
 

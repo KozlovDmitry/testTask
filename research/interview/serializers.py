@@ -4,7 +4,6 @@ from .my_helper import MyHelper
 from .models import *
 
 
-
 class QuestionTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuestionType
@@ -129,7 +128,6 @@ class AnswerSerializer(serializers.ModelSerializer, MyHelper):
         fields = ['answer', 'question']
 
 
-
 class PassedQuizSerializer(serializers.ModelSerializer):
     answers = AnswerSerializer(many=True)
     class Meta:
@@ -151,6 +149,3 @@ class AnswerToQuizSerializer(serializers.ModelSerializer):
     class Meta:
         model = Quiz
         fields = ['questions']
-
-
-

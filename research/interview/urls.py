@@ -14,23 +14,3 @@ urlpatterns = [
     url(r'^passedquiz/(?P<pk>[0-9]+)/$', PassedQuiz.as_view()),
     url(r'^answertoquiz/(?P<pk>[0-9]+)/$', AnswerToQuiz.as_view()),
 ]
-
-
-
-# {
-#     "user_id": 123,
-#     "answers": [
-#         {
-#             "question": 22,
-#             "answer": "Dmitriy"
-#         },
-#         {
-#             "question": 23,
-#             "answer": "Kozlov"
-#         },
-#         {
-#             "question": 30,
-#             "answer": "Gitar"
-#         }
-#     ]
-# }

@@ -1,17 +1,13 @@
-from rest_framework import generics, authentication, permissions
-from rest_framework.views import APIView
-from rest_framework import status
+from rest_framework import generics, permissions
 from rest_framework.response import Response
 from .serializers import *
 from .models import *
-
 
 
 class QuestionTypeList(generics.ListCreateAPIView):
     queryset = QuestionType.objects.all()
     serializer_class = QuestionTypeSerializer
     permission_classes = [permissions.IsAdminUser]
-
 
 
 class QuestionTypeDetail(generics.RetrieveDestroyAPIView):
