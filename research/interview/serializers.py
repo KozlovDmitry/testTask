@@ -48,29 +48,31 @@ class QuestionByQuizSerializer(serializers.ModelSerializer):
         fields = ['question']
 
 
-class AnswerSerializer(serializers.ModelSerializer, MyHelper):
+class MyCustomeSerializer(serializers.Serializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
+    answer = serializers.CharField()
+
+
+class AnswerSerializer(serializers.ModelSerializer, MyHelper):
+    user_id = serializers.IntegerField()
+    quiz = serializers.PrimaryKeyRelatedField(queryset=Quiz.objects.all())
 
     class Meta:
         model = Answer
-        fields = ['question', 'answer']
+        fields = ['user_id', 'quiz']
 
     def create(self, validated_data):
-        my_helper = MyHelper()
-        try:
-            quiz = my_helper.get_active_quiz_by_pk(self.context['quiz'])
-            user = my_helper.get_create_user(self.context['user'])
-            my_helper.check_question_by_quiz(validated_data['question'], quiz)
-            my_helper.check_answer_by_question(validated_data['question'], validated_data['answer'])
-        except ValidationError as e:
-            raise ValidationError(e.detail[0], code=400)
+        quiz = self.get_active_quiz_by_pk(validated_data['quiz'].id)
 
-        answer = Answer(
-            answer=validated_data['answer'],
-            question=validated_data['question'],
-            quiz=quiz,
-            user_id=user
-        )
-        answer.save()
-        return answer
+        my_helper = MyHelper({
+            'quiz': quiz,
+            'user_id': self.get_create_user(validated_data['user_id'])
+        })
 
+        answers = list(map(
+            my_helper.answer_creater,
+            self.context['answers']
+        ))
+
+        raw_answer = Answer.objects.bulk_create(answers)
+        return self.beauty_answer(raw_answer)

@@ -55,18 +55,26 @@ class AvailableQuizDetail(APIView, MyHelper):
 
 class PassQuiz(APIView, MyHelper):
     def post(self, request):
-        ser_answer = AnswerSerializer(
-            data=request.data.get('answers', []),
-            many=True,
-            context={
-                'quiz': request.data.get('quiz', None),
-                'user': request.data.get('user_id', None),
-            })
+        if 'answers' not in request.data:
+            return Response('answers should be exist', status=status.HTTP_400_BAD_REQUEST)
+        else:
+            answers_ser = MyCustomeSerializer(data=request.data.get('answers', []), many=True)
 
-        if ser_answer.is_valid():
-            ser_answer.create(validated_data=ser_answer.validated_data)
-            return Response(ser_answer.data)
-        return Response(ser_answer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if answers_ser.is_valid():
+            general_ser = AnswerSerializer(
+                data={
+                    'user_id': request.data.get('user_id', None),
+                    'quiz': request.data.get('quiz', None),
+                },
+                context={'answers': answers_ser.validated_data}
+            )
+        else:
+            return Response(answers_ser.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        if general_ser.is_valid():
+            general_ser.create(validated_data=general_ser.validated_data)
+            return Response(general_ser.data)
+        return Response(general_ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PassedQuiz(APIView, MyHelper):
