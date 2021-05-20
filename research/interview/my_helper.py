@@ -1,100 +1,65 @@
 from rest_framework.exceptions import ValidationError
-from rest_framework import status
-from .models import QuestionOption, QuestionType, Question, Quiz, UserOfResearch
+from .models import *
+from django.db.models import Q
+from django.core.exceptions import ObjectDoesNotExist
+import datetime
+import pytz
 
 
 class MyHelper:
-    def get_create_question_option(self, question_option):
-        name = question_option.name if isinstance(question_option, QuestionOption) else question_option['name']
+    def get_active_quizs(self, default_tz='Europe/Moscow'):
+        t = pytz.timezone(default_tz).localize(datetime.datetime.now())
+        return Quiz.objects.filter(Q(start_date__lte=t) & Q(end_date__gte=t))
+
+    def get_active_quiz_by_pk(self, pk, default_tz='Europe/Moscow'):
+        t = pytz.timezone(default_tz).localize(datetime.datetime.now())
+
         try:
-            q_option = QuestionOption.objects.get(name__iexact=name)
-            return q_option
-        except:
-            new_question = QuestionOption(name=name)
-            new_question.save()
-            return new_question
-
-    def check_relation_q_type_q_option(self, q_type, q_option):
-        if type(q_option).__name__ == 'ManyRelatedManager':
-            count_q_option = q_option.count()
-            q_option = q_option.all()
-        else:
-            count_q_option = len(q_option)
-        if q_type.type == "ответ текстом" and count_q_option > 0:
-            raise ValidationError('You tried set question_option in field "ответ текстом"',
-                                  code=status.HTTP_400_BAD_REQUEST)
-        if q_type.type != "ответ текстом" and count_q_option == 0:
-            raise ValidationError('You have to set at least one question_option', code=status.HTTP_400_BAD_REQUEST)
-        return (q_type, q_option)
-
-    def get_create_q_type(self, type):
-        type = type.type if isinstance(type, QuestionType) else type['type']
-        try:
-            q_type = QuestionType.objects.get(type=type)
-        except:
-            q_type = QuestionType(type=type)
-            q_type.save()
-        return q_type
-
-    def is_parameter_transfer(self, name):
-        if name is None:
-            raise ValidationError('For CREATE method field name is mandatory', code=status.HTTP_400_BAD_REQUEST)
-        return name
-
-    def get_active_quiz(self, pk):
-        try:
-            quiz = Quiz.objects.get(pk=pk)
-        except:
-            raise ValidationError(f"Quiz {pk} hasn't found", code=status.HTTP_404_NOT_FOUND)
-        if quiz.active is False:
-            raise ValidationError(f"Quiz {pk} isn't active", code=status.HTTP_400_BAD_REQUEST)
+            quiz = Quiz.objects.get(
+                Q(pk=pk)
+                & Q(start_date__lte=t)
+                & Q(end_date__gte=t)
+            )
+        except ObjectDoesNotExist:
+            raise ValidationError('This quiz is not active', code=400)
         return quiz
 
-    def get_user(self, request):
-        if 'user_id' not in request.data:
-            raise ValidationError('You have to transfer user_id', code=status.HTTP_400_BAD_REQUEST)
-        if not isinstance(request.data['user_id'], int):
-            raise ValidationError('user_id should be integer', code=status.HTTP_400_BAD_REQUEST)
+    def get_create_user(self, user_id):
+        if not isinstance(user_id, int):
+            raise ValidationError('user_id must be integer', code=400)
         try:
-            user_id = UserOfResearch.objects.get(user_id=request.data['user_id'])
-        except:
-            user_id = UserOfResearch(user_id=request.data['user_id'])
-            user_id.save()
-        return user_id
+            user = UserOfResearch.objects.get(user_id=user_id)
+        except ObjectDoesNotExist:
+            user = UserOfResearch(user_id=user_id)
+            user.save()
+        return user
 
-    def get_answers(self, request):
-        if 'answers' not in request.data:
-            raise ValidationError('You have to transfer answers', code=status.HTTP_400_BAD_REQUEST)
-        return request.data['answers']
+    def check_question_by_quiz(self, question, quiz):
+        try:
+            quiz.question.get(id=question.id)
+        except ObjectDoesNotExist:
+            raise ValidationError(f'There is no question {question.id} in quiz {quiz.id}', code=400)
+        return True
 
-    def get_validate_answer(self, qna_tuple):
-        answer, question_options = qna_tuple
-        if answer not in question_options:
-            raise ValidationError(f"You have chosen unavailable option - {answer}, please choose from {question_options}",
-                                  code=status.HTTP_400_BAD_REQUEST)
-        return answer
+# Method for checking suit answers if it needs
+    def check_answer_by_question(self, question, answer):
+        return True
 
-    def is_answer_correct(self, qna_dict):
-        question = Question.objects.get(pk=qna_dict['question'])
-        answer = qna_dict['answer']
-        if question.type.type in ['ответ с выбором одного варианта', 'ответ с выбором нескольких вариантов']:
-            question_options = [item.name.lower() for item in question.question_option.all()]
-            answer = answer.lower()
+    def beauty_answer(self, answers):
+        result = {}
 
-            if question.type.type == 'ответ с выбором одного варианта':
-                validate_answer = self.get_validate_answer((answer, question_options))
-            else:
-                answers = [item.strip() for item in answer.split(',')]
-                validate_answer = list(map(
-                    self.get_validate_answer,
-                    list(zip(answers, [question_options for i in answers]))
-                ))
-                validate_answer = ','.join(validate_answer)
-        else:
-            validate_answer = answer
-        return validate_answer
+        def fill_result(answer):
+            if answer.quiz.name not in result:
+                result[answer.quiz.name] = list()
+            result[answer.quiz.name].append(
+                {
+                    'question': answer.question.text,
+                    'answer': answer.answer
+                }
+            )
 
-    def check_get_question(self, question, quiz):
-        if question in [item.id for item in quiz.questions.all()]:
-            return question
-        raise ValidationError(f"There is no question {question} in quiz {quiz.id}", code=status.HTTP_400_BAD_REQUEST)
+        list(map(
+            fill_result,
+            answers
+        ))
+        return result

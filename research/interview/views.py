@@ -1,31 +1,9 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from .my_helper import MyHelper
 from .serializers import *
 from .models import *
-
-
-class QuestionTypeList(generics.ListCreateAPIView):
-    queryset = QuestionType.objects.all()
-    serializer_class = QuestionTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-
-class QuestionTypeDetail(generics.RetrieveDestroyAPIView):
-    queryset = QuestionType.objects.all()
-    serializer_class = QuestionTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-
-class QuestionOptionList(generics.ListCreateAPIView):
-    queryset = QuestionOption.objects.all()
-    serializer_class = QuestionOptionSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-
-class QuestionOptionDetail(generics.RetrieveUpdateDestroyAPIView):
-    queryset = QuestionOption.objects.all()
-    serializer_class = QuestionOptionSerializer
-    permission_classes = [permissions.IsAdminUser]
 
 
 class QuestionList(generics.ListCreateAPIView):
@@ -36,7 +14,7 @@ class QuestionList(generics.ListCreateAPIView):
 
 class QuestionDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Question.objects.all()
-    serializer_class = QuestionSerializer
+    serializer_class = QuestionAdditionalSerializer
     permission_classes = [permissions.IsAdminUser]
 
 
@@ -48,77 +26,55 @@ class QuizList(generics.ListCreateAPIView):
 
 class QuizDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = Quiz.objects.all()
-    serializer_class = QuizSerializer
+    serializer_class = QuizAdditionalSerializer
     permission_classes = [permissions.IsAdminUser]
 
 
-class AvailableQuizList(generics.ListAPIView):
-    queryset = Quiz.objects.filter(active=True)
-    serializer_class = AvailableQuizSerializer
+class AvailableQuizList(generics.ListAPIView, MyHelper):
+    serializer_class = QuizSerializer
+
+    def get_queryset(self):
+        return self.get_active_quizs()
 
 
-class PassedQuiz(generics.ListAPIView):
-    queryset = Quiz.objects.all()
-    serializer_class = PassedQuizSerializer
-
-    def list(self, request, *args, **kwargs):
-        pk = kwargs['pk']
+class AvailableQuizDetail(APIView, MyHelper):
+    def get(self, request, *args, **kwargs):
+        my_helper = MyHelper()
         try:
-            user = UserOfResearch.objects.get(pk=pk)
-        except:
-            return Response(f"User {pk} hasn't been found", status=status.HTTP_404_NOT_FOUND)
+            quiz = my_helper.get_active_quiz_by_pk(self.kwargs['pk'])
+        except ValidationError as e:
+            return Response(e.detail[0], status=status.HTTP_400_BAD_REQUEST)
+        questions = [{
+            'id': item.id,
+            'type': item.type,
+            'text': item.text
+        } for item in Question.objects.filter(quiz=quiz)]
 
-        quizzes = [{
-            'id': quiz.id,
-            'name': quiz.name,
-            'answers': Answer.objects.filter(user_id=user, quiz=quiz)
-        }
-            for quiz in Quiz.objects.filter(user_id=user)]
-        if len(quizzes) == 0:
-            return Response('There are no any passed quiz', status=status.HTTP_200_OK)
-        serializer = PassedQuizSerializer(quizzes, many=True, context={"user": user})
-        return Response(serializer.data)
+        return Response(questions)
 
 
-class AnswerToQuiz(generics.ListCreateAPIView, MyHelper):
-    queryset = Question.objects.all()
-    serializer_class = AnswerToQuizSerializer
+class PassQuiz(APIView, MyHelper):
+    def post(self, request):
+        ser_answer = AnswerSerializer(
+            data=request.data.get('answers', []),
+            many=True,
+            context={
+                'quiz': request.data.get('quiz', None),
+                'user': request.data.get('user_id', None),
+            })
 
-    def list(self, request, *args, **kwargs):
-        quiz = self.get_active_quiz(kwargs['pk'])
-        serializer = AnswerToQuizSerializer(quiz)
-        return Response(serializer.data)
+        if ser_answer.is_valid():
+            ser_answer.create(validated_data=ser_answer.validated_data)
+            return Response(ser_answer.data)
+        return Response(ser_answer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def create(self, request, *args, **kwargs):
-        answers = self.get_answers(request)
-        serializer = AnswerSerializer(data=answers, many=True)
 
-        if serializer.is_valid():
-            user_id = self.get_user(request)
-            quiz = self.get_active_quiz(kwargs['pk'])
-
-            if quiz in user_id.passed_quiz.all():
-                return Response('You have already passed this quiz', status=status.HTTP_208_ALREADY_REPORTED)
-
-            list(map(
-                self.is_answer_correct,
-                answers
-            ))
-
-            answer_instances = list(map(
-                lambda item: Answer(
-                    answer=item['answer'],
-                    question_id=self.check_get_question(item['question'], quiz),
-                    user_id=user_id,
-                    quiz=quiz,
-                ),
-                answers
-            ))
-            Answer.objects.bulk_create(answer_instances)
-            user_id.passed_quiz.add(quiz)
-
-            return Response(serializer.data)
-        return Response('Bad request', status=status.HTTP_400_BAD_REQUEST)
-
+class PassedQuiz(APIView, MyHelper):
+    def get(self, request, *args, **kwargs):
+        my_helper = MyHelper()
+        queryset = Answer.objects.filter(user_id=kwargs['pk'])
+        if queryset.count() == 0:
+            return Response('No passed quiz', status=status.HTTP_404_NOT_FOUND)
+        return Response(my_helper.beauty_answer(queryset))
 
 
